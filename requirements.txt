@@ -1,0 +1,4 @@
+supabase
+google-generativeai
+requests
+beautifulsoup4
