@@ -6,21 +6,35 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-# --- 1. CONEXIONES Y CONFIGURACIÓN ---
+# --- 1. CONEXIONES Y CONFIGURACIÓN (¡VERSIÓN ROBUSTA!) ---
 def inicializar_servicios():
-    url_supabase = os.environ.get("SUPABASE_URL")
-    key_supabase = os.environ.get("SUPABASE_KEY")
-    supabase = create_client(url_supabase, key_supabase)
+    max_reintentos = 3
+    reintento_actual = 0
+    while reintento_actual < max_reintentos:
+        try:
+            print(f"Intento de conexión {reintento_actual + 1}/{max_reintentos}...")
+            url_supabase = os.environ.get("SUPABASE_URL")
+            key_supabase = os.environ.get("SUPABASE_KEY")
+            supabase = create_client(url_supabase, key_supabase)
 
-    google_api_key = os.environ.get("GOOGLE_API_KEY")
-    genai.configure(api_key=google_api_key)
-    model_ia = genai.GenerativeModel('gemini-1.5-flash')
+            google_api_key = os.environ.get("GOOGLE_API_KEY")
+            genai.configure(api_key=google_api_key)
+            model_ia = genai.GenerativeModel('gemini-1.5-flash')
+            
+            print("✅ Conexiones a Supabase y Google IA establecidas.")
+            return supabase, model_ia
+        except Exception as e:
+            reintento_actual += 1
+            print(f"❌ Falló la conexión: {e}. Reintentando en 5 segundos...")
+            time.sleep(5)
+    
+    print("❌ No se pudieron establecer las conexiones después de varios intentos. Abortando.")
+    return None, None
 
-    print("✅ Conexiones a Supabase y Google IA establecidas.")
-    return supabase, model_ia
-
+# (El resto del código es exactamente el mismo)
 # --- 2. LA FASE DE PSICOLOGÍA DE MERCADO ---
 def crear_biblia_de_ventas(supabase, model_ia, campana_id, que_vendes):
+    # ... (código sin cambios) ...
     print("\n🧐 Analizando el mercado para la campaña...")
     response = supabase.table('argumentarios_venta').select('id').eq('campana_id', campana_id).execute()
     if response.data:
@@ -61,10 +75,6 @@ def crear_biblia_de_ventas(supabase, model_ia, campana_id, que_vendes):
         }).execute()
     print("✅ 'Biblia de Ventas' creada y guardada en la base de datos.")
 
-# --- 3. ANÁLISIS INDIVIDUAL (aún no lo usamos, pero lo dejamos listo) ---
-def analizar_sitio_web(url_sitio):
-    # En el futuro, aquí pondremos la lógica para analizar la web de cada prospecto.
-    pass
 
 # --- EL PUNTO DE ENTRADA: main() ---
 def main():
@@ -73,6 +83,10 @@ def main():
 
     print("--- INICIO DE MISIÓN DEL ANALISTA PSICÓLOGO v2.0 ---")
     supabase, model_ia = inicializar_servicios()
+    
+    if not supabase or not model_ia:
+        return # Si las conexiones fallaron, detenemos la misión
+
     crear_biblia_de_ventas(supabase, model_ia, ID_CAMPANA_ACTUAL, QUE_VENDE_EL_CLIENTE)
 
     print("\n🔍 Buscando prospectos 'cazados' para calificar...")
@@ -92,9 +106,8 @@ def main():
 
     print("\n🎉 ¡MISIÓN DEL ANALISTA PSICÓLOGO COMPLETADA!")
 
-if __name__ == "__main__":
-    main()
-# --- Ejecutamos la función principal en un bucle infinito ---
+
+# --- Ejecutamos la función principal en un bucle ---
 if __name__ == "__main__":
     while True:
         try:
@@ -102,7 +115,5 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Ocurrió un error en el ciclo principal: {e}")
         
-        # El trabajador se "duerme" por 1 hora antes de volver a buscar trabajo.
-        # En el futuro, el Orquestador lo despertará directamente.
         print("\nAnalista en modo de espera por 1 hora...")
         time.sleep(3600)
