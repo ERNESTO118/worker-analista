@@ -94,3 +94,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+# --- Ejecutamos la función principal en un bucle infinito ---
+if __name__ == "__main__":
+    while True:
+        try:
+            main()
+        except Exception as e:
+            print(f"Ocurrió un error en el ciclo principal: {e}")
+        
+        # El trabajador se "duerme" por 1 hora antes de volver a buscar trabajo.
+        # En el futuro, el Orquestador lo despertará directamente.
+        print("\nAnalista en modo de espera por 1 hora...")
+        time.sleep(3600)
