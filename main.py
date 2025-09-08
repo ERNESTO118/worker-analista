@@ -1,119 +1,73 @@
-import os
-import json
-import google.generativeai as genai
-from supabase import create_client, Client
-import time
-import requests
+import os, json, time, requests
 from bs4 import BeautifulSoup
+from supabase import create_client
+import google.generativeai as genai
 
-# --- 1. CONEXIONES Y CONFIGURACIÓN (¡VERSIÓN ROBUSTA!) ---
 def inicializar_servicios():
-    max_reintentos = 3
-    reintento_actual = 0
-    while reintento_actual < max_reintentos:
-        try:
-            print(f"Intento de conexión {reintento_actual + 1}/{max_reintentos}...")
-            url_supabase = os.environ.get("SUPABASE_URL")
-            key_supabase = os.environ.get("SUPABASE_KEY")
-            supabase = create_client(url_supabase, key_supabase)
+    supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
+    genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
+    model_ia = genai.GenerativeModel('gemini-1.5-flash')
+    print("✅ Conexiones a Supabase y Google IA establecidas.")
+    return supabase, model_ia
 
-            google_api_key = os.environ.get("GOOGLE_API_KEY")
-            genai.configure(api_key=google_api_key)
-            model_ia = genai.GenerativeModel('gemini-1.5-flash')
-            
-            print("✅ Conexiones a Supabase y Google IA establecidas.")
-            return supabase, model_ia
-        except Exception as e:
-            reintento_actual += 1
-            print(f"❌ Falló la conexión: {e}. Reintentando en 5 segundos...")
-            time.sleep(5)
-    
-    print("❌ No se pudieron establecer las conexiones después de varios intentos. Abortando.")
-    return None, None
-
-# (El resto del código es exactamente el mismo)
-# --- 2. LA FASE DE PSICOLOGÍA DE MERCADO ---
-def crear_biblia_de_ventas(supabase, model_ia, campana_id, que_vendes):
-    # ... (código sin cambios) ...
+def crear_biblia_de_ventas(supabase, model_ia, campana):
     print("\n🧐 Analizando el mercado para la campaña...")
-    response = supabase.table('argumentarios_venta').select('id').eq('campana_id', campana_id).execute()
+    response = supabase.table('argumentarios_venta').select('id').eq('campana_id', campana['id']).execute()
     if response.data:
         print("✅ La 'Biblia de Ventas' para esta campaña ya existe.")
         return
 
-    print("  -> La 'Biblia de Ventas' no existe. Creándola con la IA...")
-    
-    prompt_objeciones = f"""
-    Actúa como un psicólogo de ventas experto. Para un cliente que vende "{que_vendes}", genera un objeto JSON.
-    La clave principal debe ser "objeciones".
-    El valor debe ser una lista de 5 objeciones o miedos comunes que un prospecto tendría antes de comprar.
-    Cada objeción en la lista debe ser un objeto JSON con dos claves: "dolor_clave" (un identificador corto en mayúsculas, ej: 'MIEDO_COSTOS') y "descripcion_dolor" (la preocupación del cliente en una frase).
-    Genera únicamente el objeto JSON.
-    """
+    print("  -> Creando 'Biblia de Ventas' con la IA...")
+    criterios = json.loads(campana['criterio_busqueda'])
+    prompt_objeciones = f'Actúa como un psicólogo de ventas. Para un cliente que vende "{criterios["que_vendes"]}", genera un JSON con una lista de 5 objeciones comunes. Cada objeción debe tener "dolor_clave" y "descripcion_dolor". Genera solo el JSON.'
     try:
         response_ia = model_ia.generate_content(prompt_objeciones)
         json_text = response_ia.text.strip().replace('```json', '').replace('```', '')
         objeciones = json.loads(json_text)['objeciones']
-        print(f"  -> IA ha identificado {len(objeciones)} dolores principales.")
     except Exception as e:
-        print(f"❌ Error al identificar objeciones con la IA: {e}")
+        print(f"❌ Error al identificar objeciones: {e}")
         return
 
     for objecion in objeciones:
-        print(f"    -> Creando argumentario para: {objecion['dolor_clave']}")
-        prompt_argumentario = f"""
-        Actúa como un copywriter de ventas de élite.
-        El producto de tu cliente es: "{que_vendes}".
-        La objeción o dolor del prospecto es: "{objecion['descripcion_dolor']}".
-        Redacta un argumentario de venta poderoso y empático que derribe esta objeción específica, ofreciendo el producto como la solución.
-        """
+        prompt_argumentario = f'Actúa como un copywriter de élite. El producto es "{criterios["que_vendes"]}". La objeción es "{objecion["descripcion_dolor"]}". Redacta un argumentario que derribe esta objeción.'
         response_arg = model_ia.generate_content(prompt_argumentario)
-        
-        supabase.table('argumentarios_venta').insert({
-            'campana_id': campana_id, 'dolor_clave': objecion['dolor_clave'],
-            'descripcion_dolor': objecion['descripcion_dolor'], 'argumentario_solucion': response_arg.text
-        }).execute()
-    print("✅ 'Biblia de Ventas' creada y guardada en la base de datos.")
+        supabase.table('argumentarios_venta').insert({'campana_id': campana['id'], 'dolor_clave': objecion['dolor_clave'], 'descripcion_dolor': objecion['descripcion_dolor'], 'argumentario_solucion': response_arg.text}).execute()
+    print("✅ 'Biblia de Ventas' creada.")
 
-
-# --- EL PUNTO DE ENTRADA: main() ---
 def main():
-    ID_CAMPANA_ACTUAL = 1
-    QUE_VENDE_EL_CLIENTE = "Servicios de construcción de lujo para viviendas y hoteles."
-
-    print("--- INICIO DE MISIÓN DEL ANALISTA PSICÓLOGO v2.0 ---")
+    print("--- INICIO DE MISIÓN DEL ANALISTA PSICÓLOGO ---")
     supabase, model_ia = inicializar_servicios()
-    
-    if not supabase or not model_ia:
-        return # Si las conexiones fallaron, detenemos la misión
 
-    crear_biblia_de_ventas(supabase, model_ia, ID_CAMPANA_ACTUAL, QUE_VENDE_EL_CLIENTE)
-
-    print("\n🔍 Buscando prospectos 'cazados' para calificar...")
-    response = supabase.table('prospectos').select('*').eq('estado_prospecto', 'cazado').limit(10).execute()
-
-    if not response.data:
-        print("✅ No hay nuevos prospectos para analizar.")
+    # Buscamos una campaña en estado 'analizando'
+    response_campana = supabase.table('campanas').select('*').eq('estado_campana', 'analizando').limit(1).execute()
+    if not response_campana.data:
+        print("No hay campañas activas para analizar.")
         return
 
-    prospectos_a_analizar = response.data
-    for prospecto in prospectos_a_analizar:
-        supabase.table('prospectos').update({
-            'estado_prospecto': 'analizado_calificado'
-        }).eq('prospecto_id', prospecto['prospecto_id']).execute()
+    campana_actual = response_campana.data[0]
+    crear_biblia_de_ventas(supabase, model_ia, campana_actual)
+
+    print("\n🔍 Buscando prospectos 'cazados' para calificar...")
+    response_prospectos = supabase.table('prospectos').select('*').eq('estado_prospecto', 'cazado').eq('campana_id', campana_actual['id']).limit(10).execute()
+    if not response_prospectos.data:
+        print("✅ No hay nuevos prospectos para analizar en esta campaña.")
+        # Si no hay más prospectos, marcamos la campaña como lista para persuadir
+        supabase.table('campanas').update({'estado_campana': 'persuadiendo'}).eq('id', campana_actual['id']).execute()
+        return
+
+    for prospecto in response_prospectos.data:
+        # Aquí iría la lógica de análisis individual (web, etc.)
+        supabase.table('prospectos').update({'estado_prospecto': 'analizado_calificado'}).eq('prospecto_id', prospecto['prospecto_id']).execute()
         print(f"  -> ✅ Calificado: {prospecto['nombre_negocio']}")
-        time.sleep(0.5)
+    
+    print("\n🎉 ¡MISIÓN DEL ANALISTA COMPLETADA!")
 
-    print("\n🎉 ¡MISIÓN DEL ANALISTA PSICÓLOGO COMPLETADA!")
-
-
-# --- Ejecutamos la función principal en un bucle ---
 if __name__ == "__main__":
     while True:
         try:
             main()
         except Exception as e:
-            print(f"Ocurrió un error en el ciclo principal: {e}")
+            print(f"Ocurrió un error en el ciclo principal del Analista: {e}")
         
-        print("\nAnalista en modo de espera por 1 hora...")
+        print(f"\nAnalista en modo de espera por 1 hora...")
         time.sleep(3600)
