@@ -1,4 +1,4 @@
-supabase
+postgrest
 google-generativeai
 requests
 beautifulsoup4
