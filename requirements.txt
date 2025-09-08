@@ -2,3 +2,4 @@ postgrest
 google-generativeai
 requests
 beautifulsoup4
+supabase
