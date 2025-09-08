@@ -38,7 +38,6 @@ def main():
     print("--- INICIO DE MISIÓN DEL ANALISTA PSICÓLOGO ---")
     supabase, model_ia = inicializar_servicios()
 
-    # Buscamos una campaña en estado 'analizando'
     response_campana = supabase.table('campanas').select('*').eq('estado_campana', 'analizando').limit(1).execute()
     if not response_campana.data:
         print("No hay campañas activas para analizar.")
@@ -51,12 +50,10 @@ def main():
     response_prospectos = supabase.table('prospectos').select('*').eq('estado_prospecto', 'cazado').eq('campana_id', campana_actual['id']).limit(10).execute()
     if not response_prospectos.data:
         print("✅ No hay nuevos prospectos para analizar en esta campaña.")
-        # Si no hay más prospectos, marcamos la campaña como lista para persuadir
         supabase.table('campanas').update({'estado_campana': 'persuadiendo'}).eq('id', campana_actual['id']).execute()
         return
 
     for prospecto in response_prospectos.data:
-        # Aquí iría la lógica de análisis individual (web, etc.)
         supabase.table('prospectos').update({'estado_prospecto': 'analizado_calificado'}).eq('prospecto_id', prospecto['prospecto_id']).execute()
         print(f"  -> ✅ Calificado: {prospecto['nombre_negocio']}")
     
